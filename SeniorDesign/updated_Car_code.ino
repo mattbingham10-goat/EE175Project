@@ -1,5 +1,6 @@
 #include <Stepper.h>
 #include <MPU6050.h>
+#include <PID_v1.h>
 
 // Stepper motor setup
 #define STEPS_PER_REV 2048  // Full-step mode (or 4096 for half-step)
@@ -41,6 +42,17 @@ float angleIn = 0;
 MPU6050 mpu;
 float angleZ = 0; // Current yaw angle
 unsigned long prevTime;
+
+//ADDING PID
+double setpointLeft, inputLeft, outputLeft;
+double KpLeft = 0.5, KiLeft = 0.1, KdLeft = 0.1;
+double setpointRight, inputRight, outputRight;
+double KpRight = 0.5, KiRight = 0.1, KdRight = 0.1;
+
+PID myPIDLeft(&inputLeft, &outputLeft, &setpointLeft, KpLeft, KiLeft, KdLeft, DIRECT);
+PID myPIDRight(&inputRight, &outputRight, &setpointRight, KpRight, KiRight, KdRight, DIRECT);
+
+
 // Interrupt service routines
 void countEncoder1() {
   unsigned long currentTime = micros();
@@ -134,7 +146,6 @@ void tick() {
       cameraSpin();
       Serial.print("Steps: ");
       Serial.println(stepCount);
-
       // testCount++;
       // if (testCount > 3) {
       //   laserDetect = 1;
@@ -206,6 +217,14 @@ void setup() {
   }
 
   prevTime = millis();
+
+  // Set up PID
+  myPIDLeft.SetMode(AUTOMATIC);
+  myPIDLeft.SetOutputLimits(0, 255);
+
+  myPIDRight.SetMode(AUTOMATIC);
+  myPIDRight.SetOutputLimits(0, 255);
+
   Serial.begin(115200);
 }
 
@@ -222,6 +241,22 @@ void loop() {
       command += c;         // Append character to the buffer
     }
   }
+  // Set desired speed
+  setpointLeft = 80;
+  setpointRight = 80;
+
+  // Get current speed
+  inputLeft = getSpeed(leftPulses);
+  inputRight = getSpeed(rightPulses);
+
+  // Compute PID output
+  myPIDLeft.Compute();
+  myPIDRight.Compute();
+  
+  // Update motor speed
+  analogWrite(enA, outputLeft);
+  analogWrite(enB, outputRight);
+
   tick();
 
 }
@@ -230,11 +265,11 @@ void processCommandAuto(int camera) {
   if (camera == 0) {
     stopMotors();
   }
-  else if (camera == 10) {
-    rotateTo(5);
+  else if (input == 10) {
+    rotateTo(10);
   }
-  else if (camera == -10) {
-    rotateTo(-5);
+  else if (input == -10) {
+    rotateTo(-10);
   }
   else if (camera != 0) {
     // Go straight
@@ -261,7 +296,8 @@ void rotateTo(float targetAngle) {
     int16_t gx, gy, gz;
     float gyroZ, dt;
     unsigned long currentTime;
-    if (targetAngle > 10) {
+
+    if(targetAngle > 10) {
       targetAngle = targetAngle - 10;
     }
     angleZ = 0; // Reset current angle to 0 before starting rotation
@@ -282,22 +318,10 @@ void rotateTo(float targetAngle) {
 
         // Rotate motors based on sign of target angle
         if (targetAngle > 0) {
-          // Set right rotation motor speeds here
-          digitalWrite(in1, LOW); 
-          digitalWrite(in2, HIGH);
-          analogWrite(enA, 80);
-          digitalWrite(in3, HIGH); 
-          digitalWrite(in4, LOW);
-          analogWrite(enB, 94);
+          rotateRight(80);
         } 
         else {
-            // Set left rotation motor speeds here
-            digitalWrite(in1, HIGH); 
-            digitalWrite(in2, LOW);
-            analogWrite(enA, 80);
-            digitalWrite(in3, LOW); 
-            digitalWrite(in4, HIGH);
-            analogWrite(enB, 94);
+          rotateLeft(80);
         }
     }
     // Stop motors when angle is reached
@@ -340,4 +364,37 @@ void cameraSpin() {
     stepCount = 0;
     currentAngle = 0;
   }
-} 
+}
+
+
+// MATTTTT
+double getSpeed(volatile long &encoderPulses) {
+  static unsigned long lastTime = millis();
+  static long lastPulses = 0;
+  unsigned long currentTime = millis();
+  double elapsedTime = (currentTime - lastTime) / 1000.0; // Convert ms to sec
+
+  double speed = (encoderPulses - lastPulses) / elapsedTime; // Pulses per second
+  lastPulses = encoderPulses;  // Store current pulse count for next calculation
+  lastTime = currentTime;
+
+  return speed;
+}
+
+void rotateRight(int speed) {
+  digitalWrite(in1, LOW); 
+  digitalWrite(in2, HIGH);
+  analogWrite(enA, speed);
+  digitalWrite(in3, HIGH); 
+  digitalWrite(in4, LOW);
+  analogWrite(enB, speed);
+}
+
+void rotateLeft(int speed) {
+  digitalWrite(in1, HIGH); 
+  digitalWrite(in2, LOW);
+  analogWrite(enA, speed);
+  digitalWrite(in3, LOW); 
+  digitalWrite(in4, HIGH);
+  analogWrite(enB, speed);
+}
