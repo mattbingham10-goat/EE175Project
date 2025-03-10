@@ -265,10 +265,10 @@ void processCommandAuto(int camera) {
   if (camera == 0) {
     stopMotors();
   }
-  else if (input == 10) {
+  else if (camera == 10) {
     rotateTo(10);
   }
-  else if (input == -10) {
+  else if (camera == -10) {
     rotateTo(-10);
   }
   else if (camera != 0) {
